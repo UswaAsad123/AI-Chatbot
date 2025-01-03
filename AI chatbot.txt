@@ -1,0 +1,98 @@
+import os
+import whisper
+from groq import Groq
+from gtts import gTTS
+import tempfile
+import gradio as gr
+
+# Set your Groq API Key (make sure to set it in your environment variables for security)
+os.environ['GROQ_API_KEY'] = 'api key here'
+
+# Load Whisper model for transcription
+model = whisper.load_model("base")
+
+# Initialize Groq API client
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+# Function to transcribe audio using Whisper
+def transcribe_audio(audio_file):
+    result = model.transcribe(audio_file)
+    return result['text']
+
+# Function to get LLM response from Groq API
+def get_llm_response(user_input):
+    chat_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": user_input}],
+        model="llama-3.1-8b-instant",
+    )
+    return chat_completion.choices[0].message.content
+
+# Function to convert text to audio using gTTS
+def text_to_audio(text):
+    tts = gTTS(text)
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tts.save(temp_file.name)
+    return temp_file.name
+
+# Complete pipeline for the chatbot
+def chatbot_pipeline(audio_input, text_input):
+    if audio_input:
+        # Step 1: Transcribe Audio
+        user_text = transcribe_audio(audio_input)
+    elif text_input:
+        # If the user entered text, use it directly
+        user_text = text_input
+    else:
+        return "No input received.", None
+
+    # Step 2: Get Response from LLM
+    llm_response = get_llm_response(user_text)
+
+    # Step 3: Convert Response to Audio
+    response_audio = text_to_audio(llm_response)
+
+    return llm_response, response_audio
+
+# Custom CSS for better aesthetics
+css = """
+    .gradio-container {
+        background-color: #f0f4f8;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+    .gradio-button {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 10px;
+    }
+    .gradio-button:hover {
+        background-color: #45a049;
+    }
+    .gradio-textbox {
+        border-radius: 10px;
+        padding: 10px;
+    }
+    .gradio-output {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+    }
+"""
+
+# Gradio Interface with both Voice and Text input
+interface = gr.Interface(
+    fn=chatbot_pipeline,
+    inputs=[
+        gr.Audio(type="filepath", label="Speak to Chatbot"),  # Voice input
+        gr.Textbox(placeholder="Type your message here...", label="Or Type Here"),  # Text input
+    ],
+    outputs=[gr.Textbox(label="LLM Response"), gr.Audio(label="Audio Response")],
+    title="Real-Time Voice-to-Voice Chatbot",
+    description="Speak or type to interact with the chatbot, and it will reply with both text and voice.",
+    theme="compact",  # Makes it compact, better for aesthetics
+    css=css  # Apply custom CSS for better visual appeal
+)
+
+# Launch the Gradio app
+interface.launch()
